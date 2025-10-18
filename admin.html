@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Panel | CarGo Rentals</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+<div id="navbar"></div>
+
+<script>
+  fetch('/navbar.html')
+    .then(res => res.text())
+    .then(html => { document.getElementById('navbar').innerHTML = html; setupNavbar(); });
+</script>
+
+<script>
+function setupNavbar(){
+  try{
+    const logoutBtn = document.getElementById('nav-logout');
+  if(logoutBtn) logoutBtn.onclick = ()=>{ sessionStorage.removeItem('adminLoggedIn'); window.location.href='/signup.html'; };
+    const adminLink = document.getElementById('nav-admin');
+    // show admin link and hide book/history when admin present
+    const isAdmin = !!sessionStorage.getItem('adminLoggedIn');
+  if(isAdmin){ if(adminLink) adminLink.style.display='inline'; document.getElementById('nav-book').style.display='none'; document.getElementById('nav-history').style.display='none'; document.getElementById('nav-home').style.display='none'; }
+    else { if(adminLink) adminLink.style.display='none'; }
+  }catch(e){}
+}
+
+// If admin session already exists (sessionStorage), show the dashboard immediately
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const token = sessionStorage.getItem('adminToken');
+    const isAdmin = sessionStorage.getItem('adminLoggedIn');
+    if (isAdmin && token) {
+      window.adminToken = token;
+      document.getElementById('admin-login').classList.add('hidden');
+      document.getElementById('admin-dashboard').classList.remove('hidden');
+      // show all panels collapsed by default
+      loadTransactions();
+      try { if (typeof videoStream === 'undefined' || !videoStream) startScan(); } catch(e){}
+    }
+  } catch(e){}
+});
+setTimeout(setupNavbar,120);
+</script>
+
+<!-- debug handlers removed for production UI -->
+<script>
+  // prevent direct access to admin dashboard without entering credentials on this page
+  try { localStorage.removeItem('adminToken'); } catch(e){}
+</script>
+<!-- spacer for fixed navbar -->
+<div class="h-20"></div>
+
+<div class="flex justify-center">
+  <div class="bg-white p-6 rounded shadow-lg w-full max-w-6xl">
+    <h2 class="text-2xl font-bold mb-6 text-center">Admin Panel</h2>
+  <!-- debug box removed -->
+
+    <div id="admin-login" class="space-y-4 max-w-md mx-auto">
+  <input id="admin-id" type="text" placeholder="Admin ID" class="w-full p-2 border rounded" value="">
+  <input id="admin-pass" type="password" placeholder="Password" class="w-full p-2 border rounded" value="">
+  <button id="admin-login-btn" type="button" class="bg-green-600 text-white w-full p-2 rounded">Login</button>
+      <div id="admin-login-msg" class="text-sm text-red-600"></div>
+    </div>
+
+    <div id="admin-dashboard" class="hidden mt-6">
+      <!-- Menu bar + filters -->
+      <div class="flex flex-col md:flex-row gap-3 mb-4 items-center justify-between">
+        <div class="flex gap-3">
+          <button id="menu-add" type="button" class="px-4 py-2 rounded bg-blue-100 text-blue-800">Add Cars</button>
+          <button id="menu-verify" type="button" class="px-4 py-2 rounded bg-gray-100 text-gray-800">Verify Payment</button>
+          <button id="menu-trans" type="button" class="px-4 py-2 rounded bg-gray-100 text-gray-800">Business Details</button>
+          <button id="menu-all" type="button" class="px-3 py-2 rounded bg-gray-100 text-gray-800">Show All</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="admin-search" placeholder="Search name, email, car" class="border px-2 py-1 rounded" />
+          <input id="filter-start" type="date" class="border px-2 py-1 rounded" />
+          <input id="filter-end" type="date" class="border px-2 py-1 rounded" />
+          <button id="btn-apply-filters" type="button" class="px-3 py-1 rounded bg-green-600 text-white">Apply</button>
+          <button id="btn-clear-filters" type="button" class="px-3 py-1 rounded bg-gray-200">Clear</button>
+          <button id="admin-logout" type="button" class="px-3 py-1 rounded bg-red-600 text-white">Logout</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <!-- Column 1: Add Car -->
+  <div id="col-addcar" class="p-4 border rounded hidden">
+          <h3 class="text-lg font-semibold mb-3">Add Car</h3>
+          <form id="addCarForm" class="space-y-3">
+            <input type="text" name="brand" placeholder="Brand" required class="w-full p-2 border rounded">
+            <input type="text" name="model" placeholder="Model" required class="w-full p-2 border rounded">
+            <input type="number" name="year" placeholder="Year" required class="w-full p-2 border rounded">
+            <input type="number" step="0.01" name="daily_rate" placeholder="Daily Rate (INR)" required class="w-full p-2 border rounded">
+            <input type="text" name="location" placeholder="Location" required class="w-full p-2 border rounded">
+            <button type="submit" class="bg-blue-600 text-white w-full p-2 rounded">Add Car</button>
+          </form>
+        </div>
+
+  <!-- Column 2: Verification -->
+  <div id="col-verify" class="p-4 border rounded hidden">
+          <h3 class="text-lg font-semibold mb-3">Verify Payment</h3>
+          <div id="qr-verify" class="mb-4">
+            <!-- QR input/button removed; scanner will still populate #qr-result when a token is found -->
+            <div id="qr-result" class="mt-4 text-sm"></div>
+          </div>
+          <div id="scanner" class="mt-4">
+            <h4 class="font-medium mb-2">Scan with Camera</h4>
+            <video id="video" width="100%" height="220" style="border:1px solid #ccc"></video>
+            <div id="scan-status" class="text-sm mt-2"></div>
+            <div class="mt-2 flex gap-2">
+                <button id="stop-scan" type="button" class="bg-red-600 text-white p-2 rounded">Stop Scan</button>
+            </div>
+          </div>
+        </div>
+
+  <!-- Column 3: Transactions -->
+  <div id="col-transactions" class="p-4 border rounded hidden">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold">Transactions</h3>
+            <div class="flex items-center gap-2">
+              <button id="export-csv" type="button" class="bg-gray-700 text-white px-3 py-1 rounded">Export CSV</button>
+            </div>
+          </div>
+          <div class="mt-3 overflow-auto">
+            <table id="tx-table" class="w-full text-left border-collapse text-sm">
+              <thead><tr><th class="border px-2 py-1">Payment ID</th><th class="border px-2 py-1">Customer</th><th class="border px-2 py-1">Car</th><th class="border px-2 py-1">From</th><th class="border px-2 py-1">To</th><th class="border px-2 py-1">Amount</th><th class="border px-2 py-1">Paid</th><th class="border px-2 py-1">Verified</th></tr></thead>
+              <tbody id="tx-body"></tbody>
+            </table>
+          </div>
+          <div class="mt-3 flex items-center gap-2">
+            <button id="prev-page" type="button" class="px-2 py-1 bg-gray-200 rounded">Prev</button>
+            <span id="page-info">Page 1</span>
+            <button id="next-page" type="button" class="px-2 py-1 bg-gray-200 rounded">Next</button>
+            <select id="page-size" class="border px-2 py-1 rounded">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+document.getElementById('addCarForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const formData = new FormData(this);
+  const data = Object.fromEntries(formData.entries());
+
+  fetch('/api/addcar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+  .then(res => res.json())
+  .then(data => {
+    alert(data.message);
+    this.reset();
+  });
+});
+// paging state needs to be declared early to avoid TDZ when loadTransactions is called
+var currentPage = 1;
+var currentPageSize = 20;
+
+// Admin login handling (client-side)
+// ensure adminToken is not auto-restored — admin must login each session
+try { localStorage.removeItem('adminToken'); } catch(e){}
+
+document.getElementById('admin-login-btn').addEventListener('click', function() {
+  const id = document.getElementById('admin-id').value;
+  const pass = document.getElementById('admin-pass').value;
+  const msg = document.getElementById('admin-login-msg');
+    fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, password: pass })
+  }).then(res => {
+    if (res.ok) return res.json();
+    return res.json().then(j => { throw new Error(j.message || 'Login failed'); });
+  }).then((j) => {
+  // store token in sessionStorage for this browser session and keep admin on this page
+    window.adminToken = j.token;
+    try { sessionStorage.setItem('adminLoggedIn', '1'); sessionStorage.setItem('adminToken', j.token); } catch(e){}
+    msg.innerText = '';
+    // show dashboard in-place (do not redirect) so token remains available for subsequent API calls
+    document.getElementById('admin-login').classList.add('hidden');
+    document.getElementById('admin-dashboard').classList.remove('hidden');
+    // start loading data
+    loadTransactions();
+    // ensure scanner starts when dashboard visible
+    console.debug('Admin logged in, starting scanner if available');
+    if (typeof videoStream === 'undefined' || !videoStream) startScan();
+  }).catch(err => {
+    msg.innerText = err.message || 'Invalid admin ID or password.';
+  });
+});
+
+// logout
+document.getElementById('admin-logout').addEventListener('click', () => {
+  // stop camera if running
+  try{ if (typeof videoStream !== 'undefined' && videoStream) { videoStream.getTracks().forEach(t=>t.stop()); videoStream = null; } }catch(e){}
+  // clear token state
+  window.adminToken = null;
+  try { sessionStorage.removeItem('adminToken'); } catch(e){}
+  try { localStorage.removeItem('adminToken'); } catch(e){}
+  try { sessionStorage.removeItem('adminLoggedIn'); } catch(e){}
+  // reset UI to login view and hide dashboard panels
+  document.getElementById('admin-login').classList.remove('hidden');
+  document.getElementById('admin-dashboard').classList.add('hidden');
+  ['col-addcar','col-verify','col-transactions'].forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.add('hidden'); });
+  // clear filters and reset page info
+  try { document.getElementById('admin-search').value=''; document.getElementById('filter-start').value=''; document.getElementById('filter-end').value=''; } catch(e){}
+  try { document.getElementById('page-info').innerText = 'Page 1 / 1'; } catch(e){}
+  // redirect back to signup landing
+  try { window.location.href = '/signup.html'; } catch(e){}
+});
+
+// helper to get a trimmed admin token from either window or localStorage
+function getAdminToken(){
+  try{ return (window.adminToken || sessionStorage.getItem('adminToken') || localStorage.getItem('adminToken') || '').toString().trim(); }catch(e){ return ''; }
+  }
+
+
+function buildFiltersQuery(params={}){
+  const q = document.getElementById('admin-search').value.trim();
+  const start = document.getElementById('filter-start').value;
+  const end = document.getElementById('filter-end').value;
+  if (q) params.q = q;
+  if (start) params.start_date = start;
+  if (end) params.end_date = end;
+  return Object.keys(params).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(params[k])).join('&');
+}
+
+function loadTransactions(page=1,pageSize=20) {
+  currentPage = page;
+  currentPageSize = pageSize;
+  const token = getAdminToken();
+  // if no token, show login and don't call protected endpoint
+  if (!token) {
+    try { document.getElementById('admin-login').classList.remove('hidden'); document.getElementById('admin-dashboard').classList.add('hidden'); } catch(e){}
+    return Promise.resolve({ page:1, pageSize:20, total:0, data: [] });
+  }
+  const qStr = buildFiltersQuery({ page, pageSize });
+  return fetch(`/api/admin/transactions?${qStr}`, { headers: { 'Authorization': 'Bearer ' + token } }).then(r => {
+    if (r.status === 401) {
+      // invalid token - clear and force login flow
+      try{ sessionStorage.removeItem('adminToken'); sessionStorage.removeItem('adminLoggedIn'); localStorage.removeItem('adminToken'); }catch(e){}
+      window.adminToken = null;
+      try{ document.getElementById('admin-login').classList.remove('hidden'); document.getElementById('admin-dashboard').classList.add('hidden'); }catch(e){}
+      return Promise.resolve({ page:1, pageSize:20, total:0, data: [] });
+    }
+    return r.json();
+  }).then(resp => {
+    const list = resp.data || [];
+    const body = document.getElementById('tx-body');
+    body.innerHTML = '';
+    (list || []).forEach(tx => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="border px-2 py-1">${tx.payment_id}</td><td class="border px-2 py-1">${tx.name} (${tx.email})</td><td class="border px-2 py-1">${tx.brand} ${tx.model}</td><td class="border px-2 py-1">${(new Date(tx.start_date)).toLocaleDateString()}</td><td class="border px-2 py-1">${(new Date(tx.end_date)).toLocaleDateString()}</td><td class="border px-2 py-1">₹${tx.amount}</td><td class="border px-2 py-1">${tx.paid==1?'Yes':'No'}</td><td class="border px-2 py-1">${tx.verified==1?'Yes':'No'}</td>`;
+      body.appendChild(tr);
+    });
+    document.getElementById('page-info').innerText = `Page ${resp.page} / ${Math.max(1, Math.ceil((resp.total||0)/resp.pageSize))}`;
+  }).catch(()=>{});
+}
+
+// pagination controls
+document.getElementById('prev-page').addEventListener('click', () => { if (currentPage>1) loadTransactions(currentPage-1, currentPageSize); });
+document.getElementById('next-page').addEventListener('click', () => { loadTransactions(currentPage+1, currentPageSize); });
+document.getElementById('page-size').addEventListener('change', (e) => { loadTransactions(1, parseInt(e.target.value)); });
+
+document.getElementById('btn-apply-filters').addEventListener('click', () => { loadTransactions(1, currentPageSize); });
+document.getElementById('btn-clear-filters').addEventListener('click', () => { document.getElementById('admin-search').value=''; document.getElementById('filter-start').value=''; document.getElementById('filter-end').value=''; loadTransactions(1, currentPageSize); });
+
+// Camera-based QR scanning (uses browser MediaDevices + a lightweight JS QR library if available). We'll try using the built-in BarcodeDetector if present, otherwise fall back to instructing admin to paste token.
+let videoStream = null;
+document.getElementById('stop-scan').addEventListener('click', () => {
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; document.getElementById('scan-status').innerText = 'Stopped'; }
+});
+
+async function startScan() {
+  const video = document.getElementById('video');
+  document.getElementById('scan-status').innerText = 'Starting camera...';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+    videoStream = stream;
+    video.play();
+    document.getElementById('scan-status').innerText = 'Scanning...';
+
+    // Use BarcodeDetector if available (supported in some browsers)
+    if (window.BarcodeDetector) {
+      const detector = new BarcodeDetector({formats: ['qr_code']});
+      const scanLoop = async () => {
+        try {
+          const faces = await detector.detect(video);
+          if (faces && faces.length) {
+            const token = faces[0].rawValue;
+            videoStream.getTracks().forEach(t => t.stop());
+            videoStream = null;
+            document.getElementById('scan-status').innerText = 'Found token';
+            // call verify endpoint with auth
+            fetch('/api/admin/verify-qr', { method: 'POST', headers: {'Content-Type':'application/json','Authorization':'Bearer ' + window.adminToken}, body: JSON.stringify({ qr_token: token }) }).then(r => r.json()).then(j => {
+              const result = document.getElementById('qr-result');
+              if (j.booking) {
+                result.innerText = `Verified! Booking ID: ${j.booking.id} (${j.booking.start_date} - ${j.booking.end_date})\nCar: ${j.car.brand} ${j.car.model}\nCustomer: ${j.customer.name} (${j.customer.email})\nAmount: ₹${j.amount}`;
+                loadTransactions();
+              } else {
+                result.innerText = j.message || 'Not found';
+              }
+            }).catch(()=>{ document.getElementById('qr-result').innerText = 'Verify failed'; });
+            return;
+          }
+        } catch (e) {}
+        requestAnimationFrame(scanLoop);
+      };
+      requestAnimationFrame(scanLoop);
+    } else {
+      document.getElementById('scan-status').innerText = 'Camera started — please pause and paste token if automatic scanning not supported.';
+    }
+  } catch (e) {
+    document.getElementById('scan-status').innerText = 'Camera start failed';
+  }
+}
+
+// start camera when scanner section appears
+document.getElementById('scanner').addEventListener('mouseenter', () => { if (typeof videoStream === 'undefined' || !videoStream) startScan(); });
+
+// Menu interactions: scroll into view and toggle active state
+function setActiveMenu(id) {
+  ['menu-add','menu-verify','menu-trans','menu-all'].forEach(k => {
+    const el = document.getElementById(k);
+    if (!el) return;
+    if (k === id) {
+      el.classList.remove('bg-gray-100'); el.classList.add('bg-blue-100'); el.classList.add('text-blue-800');
+    } else {
+      el.classList.remove('bg-blue-100'); el.classList.remove('text-blue-800'); el.classList.add('bg-gray-100'); el.classList.remove('text-gray-800');
+    }
+  });
+}
+
+function showOnly(idToShow) {
+  ['col-addcar','col-verify','col-transactions'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (id === idToShow) el.classList.remove('hidden'); else el.classList.add('hidden');
+  });
+}
+
+document.getElementById('menu-add').addEventListener('click', () => { console.debug('menu-add clicked'); showOnly('col-addcar'); document.getElementById('col-addcar').scrollIntoView({behavior:'smooth'}); setActiveMenu('menu-add'); });
+document.getElementById('menu-verify').addEventListener('click', () => { console.debug('menu-verify clicked'); showOnly('col-verify'); document.getElementById('col-verify').scrollIntoView({behavior:'smooth'}); setActiveMenu('menu-verify'); setTimeout(()=>{ if (typeof videoStream === 'undefined' || !videoStream) startScan(); }, 100); });
+document.getElementById('menu-trans').addEventListener('click', () => { console.debug('menu-trans clicked'); showOnly('col-transactions'); document.getElementById('col-transactions').scrollIntoView({behavior:'smooth'}); setActiveMenu('menu-trans'); loadTransactions(1,currentPageSize); });
+document.getElementById('menu-all').addEventListener('click', () => { console.debug('menu-all clicked'); ['col-addcar','col-verify','col-transactions'].forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.remove('hidden'); }); document.getElementById('admin-dashboard').scrollIntoView({behavior:'smooth'}); setActiveMenu('menu-all'); setTimeout(()=>{ if (typeof videoStream === 'undefined' || !videoStream) startScan(); },100); loadTransactions(1,currentPageSize); });
+
+document.getElementById('export-csv').addEventListener('click', () => {
+  const token = getAdminToken();
+  const qStr = buildFiltersQuery();
+  const url = `/api/admin/transactions.csv${qStr?('?'+qStr):''}`;
+  fetch(url, { headers: { 'Authorization': 'Bearer ' + token } }).then(r => {
+    if (r.status === 401) throw new Error('Unauthorized');
+    if (!r.ok) throw new Error('Export failed');
+    return r.blob();
+  }).then(b => {
+    const url = URL.createObjectURL(b);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'transactions.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }).catch(()=> alert('Export failed'));
+});
+
+// jsQR fallback loader
+const jsQrScript = document.createElement('script');
+jsQrScript.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+document.head.appendChild(jsQrScript);
+
+// modify startScan to use jsQR if BarcodeDetector not available
+const originalStartScan = startScan;
+startScan = async function() {
+  const video = document.getElementById('video');
+  document.getElementById('scan-status').innerText = 'Starting camera...';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+    videoStream = stream;
+    video.play();
+    document.getElementById('scan-status').innerText = 'Scanning...';
+
+    if (window.BarcodeDetector) {
+      // keep original BarcodeDetector path
+      const detector = new BarcodeDetector({formats: ['qr_code']});
+      const scanLoop = async () => {
+        try {
+          const faces = await detector.detect(video);
+          if (faces && faces.length) {
+            const token = faces[0].rawValue;
+            videoStream.getTracks().forEach(t => t.stop());
+            videoStream = null;
+            document.getElementById('scan-status').innerText = 'Found token';
+            fetch('/api/admin/verify-qr', { method: 'POST', headers: {'Content-Type':'application/json','Authorization':'Bearer ' + getAdminToken()}, body: JSON.stringify({ qr_token: token }) }).then(r => r.json()).then(j => {
+              const result = document.getElementById('qr-result');
+              if (j.booking) {
+                result.innerText = `Verified! Booking ID: ${j.booking.id} (${j.booking.start_date} - ${j.booking.end_date})\nCar: ${j.car.brand} ${j.car.model}\nCustomer: ${j.customer.name} (${j.customer.email})\nAmount: ₹${j.amount}`;
+                loadTransactions();
+              } else {
+                result.innerText = j.message || 'Not found';
+              }
+            }).catch(()=>{ document.getElementById('qr-result').innerText = 'Verify failed'; });
+            return;
+          }
+        } catch (e) {}
+        requestAnimationFrame(scanLoop);
+      };
+      requestAnimationFrame(scanLoop);
+    } else {
+      // use jsQR fallback
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const scanLoop = () => {
+        if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) { requestAnimationFrame(scanLoop); return; }
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        try {
+          const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+          const code = window.jsQR(imgData.data, imgData.width, imgData.height);
+          if (code && code.data) {
+            videoStream.getTracks().forEach(t => t.stop());
+            videoStream = null;
+            document.getElementById('scan-status').innerText = 'Found token';
+            fetch('/api/admin/verify-qr', { method: 'POST', headers: {'Content-Type':'application/json','Authorization':'Bearer ' + getAdminToken()}, body: JSON.stringify({ qr_token: code.data }) }).then(r => r.json()).then(j => {
+              const result = document.getElementById('qr-result');
+              if (j.booking) {
+                result.innerText = `Verified! Booking ID: ${j.booking.id} (${j.booking.start_date} - ${j.booking.end_date})\nCar: ${j.car.brand} ${j.car.model}\nCustomer: ${j.customer.name} (${j.customer.email})\nAmount: ₹${j.amount}`;
+                loadTransactions();
+              } else {
+                result.innerText = j.message || 'Not found';
+              }
+            }).catch(()=>{ document.getElementById('qr-result').innerText = 'Verify failed'; });
+            return;
+          }
+        } catch (e) {}
+        requestAnimationFrame(scanLoop);
+      };
+      requestAnimationFrame(scanLoop);
+    }
+  } catch (e) {
+    document.getElementById('scan-status').innerText = 'Camera start failed';
+  }
+};
+</script>
+
+</body>
+</html>

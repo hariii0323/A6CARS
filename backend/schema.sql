@@ -1,0 +1,49 @@
+-- A6CARS SQL schema for MySQL
+CREATE DATABASE IF NOT EXISTS A6;
+USE A6;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  role ENUM('admin','validator','user') NOT NULL DEFAULT 'user',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cars (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  reg_no VARCHAR(50) UNIQUE NOT NULL,
+  brand VARCHAR(100),
+  model VARCHAR(100),
+  model_year YEAR NULL,
+  location VARCHAR(255),
+  status ENUM('active','inactive','maintenance') DEFAULT 'active',
+  added_by INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL,
+  FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS car_history (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  car_id INT NOT NULL,
+  action VARCHAR(100) NOT NULL,
+  details TEXT,
+  performed_by INT NULL,
+  performed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE,
+  FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  car_id INT NOT NULL,
+  user_id INT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  payment_method VARCHAR(50),
+  qr_payload TEXT NULL,
+  paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
