@@ -1,0 +1,44 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: A6
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Wait for MySQL
+        run: |
+          for i in `seq 1 30`; do
+            mysqladmin ping -h127.0.0.1 -uroot -proot && break || sleep 1
+          done
+      - name: Install backend deps & run tests
+        working-directory: backend
+        run: |
+          npm ci
+          npm test
+      - name: Install frontend deps & build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build || npm run build:dev || true
+      - name: Integration tests (placeholder)
+        run: |
+          echo "Integration/E2E tests can be run here (e.g. Cypress). This is a placeholder step."

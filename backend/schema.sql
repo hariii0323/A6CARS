@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS cars (
   model_year YEAR NULL,
   location VARCHAR(255),
   status ENUM('active','inactive','maintenance') DEFAULT 'active',
+  price_per_day DECIMAL(10,2) DEFAULT 0,
   added_by INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NULL,
@@ -44,6 +45,11 @@ CREATE TABLE IF NOT EXISTS payments (
   payment_method VARCHAR(50),
   qr_payload TEXT NULL,
   paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  paid TINYINT(1) DEFAULT 1,
+  start_date DATE NULL,
+  end_date DATE NULL,
+  admin_verified_by INT NULL,
+  admin_verified TINYINT(1) DEFAULT 0,
   FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
