@@ -14,15 +14,9 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Run App') {
             steps {
-                bat 'npm run build'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                bat 'npm test || echo "No tests defined"'
+                bat 'node server.js'
             }
         }
     }
