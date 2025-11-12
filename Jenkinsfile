@@ -2,10 +2,12 @@ pipeline {
     agent any
 
     stages {
-        stage('Checkout') {
-            steps {
-                git 'https://github.com/hariii0323/A6CARS.git'
-            }
+       stage('Checkout') {
+    steps {
+        git branch: 'main', url: 'https://github.com/hariii0323/A6CARS.git'
+    }
+}
+
         }
         stage('Install Dependencies') {
             steps {
